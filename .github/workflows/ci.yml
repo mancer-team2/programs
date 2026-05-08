@@ -37,15 +37,10 @@ jobs:
           cargo --version
           which cargo
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Rust cache (registry + target)
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          shared-key: tdp-solana
 
       - name: Cache Solana tools
         id: cache-solana
@@ -60,7 +55,15 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
 
+      - name: Cache Anchor CLI binary
+        id: cache-anchor
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/anchor
+          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-rust-${{ env.RUST_VERSION }}
+
       - name: Install Anchor CLI
+        if: steps.cache-anchor.outputs.cache-hit != 'true'
         run: |
           cargo install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
 
