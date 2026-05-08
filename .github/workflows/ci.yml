@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   SOLANA_VERSION: "2.1.0"
   ANCHOR_VERSION: "0.32.1"
+  RUSTUP_TOOLCHAIN: "stable"
 
 jobs:
   build-and-test:
@@ -44,7 +45,7 @@ jobs:
 
       - name: Install Anchor CLI
         run: |
-          cargo install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
+          cargo +stable install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
 
       - name: Install Node.js
         uses: actions/setup-node@v4
