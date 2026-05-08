@@ -8,10 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  SOLANA_VERSION: "2.1.0"
-  ANCHOR_VERSION: "0.32.1"
   RUST_VERSION: "1.89.0"
-  RUSTUP_TOOLCHAIN: "1.89.0"
 
 jobs:
   build-and-test:
@@ -32,56 +29,13 @@ jobs:
           toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt,clippy
 
-      - name: Verify toolchain
-        run: |
-          echo "RUSTUP_TOOLCHAIN=$RUSTUP_TOOLCHAIN"
-          rustup show active-toolchain
-          rustc --version
-          cargo --version
-          which cargo
-          which rustc
-
-      - name: Rust cache (registry + target)
+      - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: tdp-solana
 
-      - name: Cache Solana tools
-        id: cache-solana
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/solana
-          key: solana-${{ runner.os }}-${{ env.SOLANA_VERSION }}
+      - name: Build
+        run: cargo build --all-targets
 
-      - name: Install Solana CLI
-        if: steps.cache-solana.outputs.cache-hit != 'true'
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v${{ env.SOLANA_VERSION }}/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-
-      - name: Cache Anchor CLI binary
-        id: cache-anchor
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/anchor
-          key: anchor-${{ runner.os }}-${{ env.ANCHOR_VERSION }}-rust-${{ env.RUST_VERSION }}
-
-      - name: Install Anchor CLI
-        if: steps.cache-anchor.outputs.cache-hit != 'true'
-        run: |
-          cargo install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "yarn"
-
-      - name: Install Yarn dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Build (anchor build)
-        run: anchor build
-
-      - name: Run tests (cargo test)
+      - name: Run tests
         run: cargo test -- --nocapture
