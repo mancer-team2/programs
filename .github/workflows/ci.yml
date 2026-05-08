@@ -26,11 +26,16 @@ jobs:
           sudo apt-get install -y pkg-config build-essential libudev-dev libssl-dev
 
       - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt,clippy
+
+      - name: Verify toolchain
         run: |
-          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal --component rustfmt,clippy
-          rustup default ${{ env.RUST_VERSION }}
           rustc --version
           cargo --version
+          which cargo
 
       - name: Cache cargo registry
         uses: actions/cache@v4
