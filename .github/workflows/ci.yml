@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   SOLANA_VERSION: "2.1.0"
   ANCHOR_VERSION: "0.32.1"
-  RUSTUP_TOOLCHAIN: "stable"
+  RUST_VERSION: "1.89.0"
 
 jobs:
   build-and-test:
@@ -24,6 +24,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config build-essential libudev-dev libssl-dev
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install ${{ env.RUST_VERSION }} --profile minimal --component rustfmt,clippy
+          rustup default ${{ env.RUST_VERSION }}
+          rustc --version
+          cargo --version
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -50,7 +57,7 @@ jobs:
 
       - name: Install Anchor CLI
         run: |
-          cargo +stable install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
+          cargo install anchor-cli --version ${{ env.ANCHOR_VERSION }} --locked
 
       - name: Install Node.js
         uses: actions/setup-node@v4
