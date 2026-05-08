@@ -11,6 +11,7 @@ env:
   SOLANA_VERSION: "2.1.0"
   ANCHOR_VERSION: "0.32.1"
   RUST_VERSION: "1.89.0"
+  RUSTUP_TOOLCHAIN: "1.89.0"
 
 jobs:
   build-and-test:
@@ -33,9 +34,12 @@ jobs:
 
       - name: Verify toolchain
         run: |
+          echo "RUSTUP_TOOLCHAIN=$RUSTUP_TOOLCHAIN"
+          rustup show active-toolchain
           rustc --version
           cargo --version
           which cargo
+          which rustc
 
       - name: Rust cache (registry + target)
         uses: Swatinem/rust-cache@v2
