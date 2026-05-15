@@ -1,11 +1,9 @@
-pub mod constants;
 pub mod error;
 pub mod instructions;
 pub mod state;
 
 use anchor_lang::prelude::*;
 
-pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
@@ -14,10 +12,6 @@ declare_id!("BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9");
 #[program]
 pub mod tdp_solana {
     use super::*;
-
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        initialize::handler(ctx)
-    }
 
     pub fn create_stream(
         ctx: Context<CreateStream>,

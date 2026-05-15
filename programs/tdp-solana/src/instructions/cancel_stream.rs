@@ -10,11 +10,9 @@ pub struct CancelStream<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    /// CHECK: must match stream.recipient
-    #[account(
-        constraint = recipient.key() == stream.recipient,
-    )]
-    pub recipient: UncheckedAccount<'info>,
+    /// CHECK: address-checked to equal stream.recipient; used only as ATA authority handle.
+    #[account(address = stream.recipient)]
+    pub recipient_authority: UncheckedAccount<'info>,
 
     #[account(
         mut,
@@ -55,7 +53,7 @@ pub struct CancelStream<'info> {
         init_if_needed,
         payer = creator,
         associated_token::mint = mint,
-        associated_token::authority = recipient,
+        associated_token::authority = recipient_authority,
     )]
     pub recipient_token_account: Account<'info, TokenAccount>,
 
