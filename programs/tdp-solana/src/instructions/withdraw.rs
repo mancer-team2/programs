@@ -1,8 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{Mint, Token, TokenAccount},
+    token::{self, Mint, Token, TokenAccount, Transfer},
 };
+use crate::error::VestingError;
 use crate::state::stream::Stream;
 
 #[derive(Accounts)]
@@ -51,7 +52,53 @@ pub struct Withdraw<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn withdraw_handler(_ctx: Context<Withdraw>) -> Result<()> {
-    // TODO Week 4: cek cliff, hitung vested amount, CPI transfer ke recipient
+fn calculate_vested_amount(stream: &Stream, now: i64) -> u64 {
+    if now < stream.cliff_time {
+        return 0;
+    }
+    if now >= stream.end_time {
+        return stream.total_amount;
+    }
+
+    let elapsed = (now - stream.start_time) as u128;
+    let duration = (stream.end_time - stream.start_time) as u128;
+    let total = stream.total_amount as u128;
+
+    ((total * elapsed) / duration) as u64
+}
+
+pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    let stream_key = ctx.accounts.stream.key();
+    let stream = &mut ctx.accounts.stream;
+
+    require!(!stream.canceled, VestingError::StreamAlreadyCanceled);
+
+    let vested = calculate_vested_amount(stream, now);
+    let withdrawable = vested.saturating_sub(stream.withdrawn_amount);
+
+    require!(withdrawable > 0, VestingError::NothingToWithdraw);
+
+    stream.withdrawn_amount = stream
+        .withdrawn_amount
+        .checked_add(withdrawable)
+        .ok_or(VestingError::MathOverflow)?;
+
+    let escrow_bump = stream.escrow_bump;
+    let seeds: &[&[u8]] = &[b"escrow_authority", stream_key.as_ref(), &[escrow_bump]];
+    let signer_seeds = &[seeds];
+
+    let cpi_accounts = Transfer {
+        from: ctx.accounts.escrow_token_account.to_account_info(),
+        to: ctx.accounts.recipient_token_account.to_account_info(),
+        authority: ctx.accounts.escrow_authority.to_account_info(),
+    };
+    let cpi_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.key(),
+        cpi_accounts,
+        signer_seeds,
+    );
+    token::transfer(cpi_ctx, withdrawable)?;
+
     Ok(())
 }
