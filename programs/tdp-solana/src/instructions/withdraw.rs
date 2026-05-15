@@ -2,7 +2,7 @@ use crate::{error::VestingError, state::stream::Stream};
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{transfer, Mint, Token, TokenAccount, Transfer},
+    token::{self, Mint, Token, TokenAccount, Transfer},
 };
 
 #[derive(Accounts)]
@@ -99,7 +99,7 @@ pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
         escrow_bump_seed.as_ref(),
     ];
 
-    transfer(
+    token::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.key(),
             Transfer {
