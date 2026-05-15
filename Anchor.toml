@@ -6,10 +6,13 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-tdp_solana = "2FUi3XvEWg9N4nMzzqX13EQ7cz2nN7FNn9afRAPWhW1h"
+tdp_solana = "BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9"
+
+[programs.devnet]
+tdp_solana = "BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
