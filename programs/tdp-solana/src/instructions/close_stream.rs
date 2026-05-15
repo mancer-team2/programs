@@ -1,6 +1,6 @@
+use crate::state::stream::Stream;
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount};
-use crate::state::stream::Stream;
 
 #[derive(Accounts)]
 pub struct CloseStream<'info> {

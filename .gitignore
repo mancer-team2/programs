@@ -1,8 +1,39 @@
-.anchor
-.DS_Store
-target
+# Anchor / Solana generated artifacts
+.anchor/
+target/
+test-ledger/
+.surfpool/
+*.log
+
+# Local wallets and keypairs
+*.json.keypair
+*-keypair.json
+id.json
+
+# Node / package manager output
+node_modules/
+.yarn/
+.pnp.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust/editor backup files
 **/*.rs.bk
-node_modules
-test-ledger
-.yarn
-.surfpool
+*.tmp
+*.bak
+
+# Coverage and reports
+coverage/
+.nyc_output/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,9 +1,9 @@
+use crate::state::stream::Stream;
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token::{Mint, Token, TokenAccount},
 };
-use crate::state::stream::Stream;
 
 #[derive(Accounts)]
 pub struct CancelStream<'info> {
