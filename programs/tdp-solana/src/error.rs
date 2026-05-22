@@ -24,10 +24,16 @@ pub enum VestingError {
     Unauthorized,
 
     #[msg("Stream has already been canceled")]
-    StreamAlreadyCanceled,
+    AlreadyCancelled,
 
     #[msg("Stream is not cancelable")]
     StreamNotCancelable,
+
+    #[msg("Stream is already fully vested")]
+    FullyVested,
+
+    #[msg("Stream is not configured for milestone unlocking")]
+    NotMilestoneStream,
 
     #[msg("Token account mint does not match stream mint")]
     InvalidTokenAccount,

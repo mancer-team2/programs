@@ -27,6 +27,10 @@ pub struct Stream {
     pub cancelable: bool,
     /// Whether the stream has been canceled.
     pub canceled: bool,
+    /// Whether unlocking is gated by an explicit milestone instead of elapsed time.
+    pub milestone_based: bool,
+    /// Whether the creator has marked the milestone as reached (only meaningful if milestone_based).
+    pub milestone_reached: bool,
     /// Bump seed for the Stream account PDA.
     pub bump: u8,
     /// Bump seed for the escrow token account PDA.

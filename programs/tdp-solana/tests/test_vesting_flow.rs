@@ -210,6 +210,7 @@ fn create_stream(ctx: &mut TestContext) {
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable: false,
+            milestone_based: false,
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -297,4 +298,107 @@ fn withdraw_claims_partial_then_full_vested_amount() {
         0
     );
     assert_eq!(stream_state(&ctx.svm, &ctx.stream).withdrawn_amount, 1_000);
+}
+
+fn create_milestone_stream(ctx: &mut TestContext) {
+    let ix = Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::CreateStream {
+            stream_id: 1,
+            recipient: ctx.recipient.pubkey(),
+            total_amount: TOTAL_AMOUNT,
+            start_time: START_TIME,
+            cliff_time: START_TIME,
+            end_time: END_TIME,
+            cancelable: true,
+            milestone_based: true,
+        }
+        .data(),
+        tdp_solana::accounts::CreateStream {
+            creator: ctx.creator.pubkey(),
+            stream: ctx.stream,
+            mint: ctx.mint,
+            creator_token_account: ctx.creator_token_account,
+            escrow_authority: ctx.escrow_authority,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: spl_associated_token_account_interface::program::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[&ctx.escrow_token_account]);
+}
+
+fn set_milestone(ctx: &mut TestContext) {
+    let ix = Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::SetMilestone {}.data(),
+        tdp_solana::accounts::SetMilestone {
+            creator: ctx.creator.pubkey(),
+            stream: ctx.stream,
+        }
+        .to_account_metas(None),
+    );
+
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[]);
+}
+
+fn withdraw_ix(ctx: &TestContext) -> Instruction {
+    Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::Withdraw {}.data(),
+        tdp_solana::accounts::Withdraw {
+            recipient: ctx.recipient.pubkey(),
+            stream: ctx.stream,
+            mint: ctx.mint,
+            escrow_authority: ctx.escrow_authority,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            recipient_token_account: ctx.recipient_token_account,
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: spl_associated_token_account_interface::program::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+fn send_ix_expect_err(svm: &mut LiteSVM, payer: &Keypair, ix: Instruction, signers: &[&Keypair]) {
+    svm.expire_blockhash();
+    let blockhash = svm.latest_blockhash();
+    let msg = Message::new_with_blockhash(&[ix], Some(&payer.pubkey()), &blockhash);
+    let mut tx_signers = vec![payer];
+    tx_signers.extend_from_slice(signers);
+    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &tx_signers).unwrap();
+    let res = svm.send_transaction(tx);
+    assert!(res.is_err(), "expected failure, got {res:?}");
+}
+
+#[test]
+fn milestone_stream_unlocks_only_after_trigger() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_milestone_stream(&mut ctx);
+
+    // Even past end_time, a milestone stream stays locked until the creator triggers it.
+    set_clock(&mut ctx.svm, END_TIME + 1_000);
+    let ix = withdraw_ix(&ctx);
+    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
+    assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);
+
+    // After the creator marks the milestone, the full amount unlocks at once.
+    set_milestone(&mut ctx);
+    withdraw(&mut ctx);
+
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.recipient_token_account),
+        TOTAL_AMOUNT
+    );
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
+        0
+    );
+    assert!(stream_state(&ctx.svm, &ctx.stream).milestone_reached);
 }

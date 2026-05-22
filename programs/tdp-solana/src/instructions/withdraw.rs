@@ -59,7 +59,7 @@ pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
     validate_withdraw_recipient(ctx.accounts.recipient.key(), ctx.accounts.stream.recipient)?;
     require!(
         !ctx.accounts.stream.canceled,
-        VestingError::StreamAlreadyCanceled
+        VestingError::AlreadyCancelled
     );
     require_keys_eq!(
         ctx.accounts.mint.key(),
@@ -73,13 +73,20 @@ pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
     );
 
     let now = Clock::get()?.unix_timestamp;
-    let vested_amount = calculate_vested_amount(
-        ctx.accounts.stream.total_amount,
-        ctx.accounts.stream.start_time,
-        ctx.accounts.stream.cliff_time,
-        ctx.accounts.stream.end_time,
-        now,
-    )?;
+    let vested_amount = if ctx.accounts.stream.milestone_based {
+        calculate_milestone_vested_amount(
+            ctx.accounts.stream.milestone_reached,
+            ctx.accounts.stream.total_amount,
+        )
+    } else {
+        calculate_vested_amount(
+            ctx.accounts.stream.total_amount,
+            ctx.accounts.stream.start_time,
+            ctx.accounts.stream.cliff_time,
+            ctx.accounts.stream.end_time,
+            now,
+        )?
+    };
     let withdrawable_amount =
         calculate_withdrawable_amount(vested_amount, ctx.accounts.stream.withdrawn_amount)?;
 
@@ -163,6 +170,15 @@ pub fn calculate_withdrawable_amount(vested_amount: u64, withdrawn_amount: u64) 
         .ok_or_else(|| VestingError::MathOverflow.into())
 }
 
+/// Milestone unlocking: all-or-nothing based on the creator-set flag.
+pub fn calculate_milestone_vested_amount(milestone_reached: bool, total_amount: u64) -> u64 {
+    if milestone_reached {
+        total_amount
+    } else {
+        0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +250,15 @@ mod tests {
         let result = validate_withdraw_recipient(Pubkey::new_unique(), Pubkey::new_unique());
 
         assert_anchor_error(result, "Unauthorized");
+    }
+
+    #[test]
+    fn milestone_locked_until_reached() {
+        assert_eq!(calculate_milestone_vested_amount(false, 1_000), 0);
+    }
+
+    #[test]
+    fn milestone_unlocks_full_amount_when_reached() {
+        assert_eq!(calculate_milestone_vested_amount(true, 1_000), 1_000);
     }
 }
