@@ -61,7 +61,6 @@ pub struct CancelStream<'info> {
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
-    pub clock: Sysvar<'info, Clock>,
 }
 
 pub fn cancel_stream_handler(ctx: Context<CancelStream>) -> Result<()> {

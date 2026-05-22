@@ -450,7 +450,6 @@ fn cancel_ix(ctx: &TestContext, creator: anchor_lang::prelude::Pubkey) -> Instru
             token_program: TOKEN_PROGRAM_ID,
             associated_token_program: spl_associated_token_account_interface::program::ID,
             system_program: anchor_lang::system_program::ID,
-            clock: anchor_lang::solana_program::sysvar::clock::ID,
         }
         .to_account_metas(None),
     )
