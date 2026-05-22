@@ -63,15 +63,25 @@ pub fn create_stream_handler(
     cliff_time: i64,
     end_time: i64,
     cancelable: bool,
+    milestone_based: bool,
 ) -> Result<()> {
-    validate_create_stream_params(
-        recipient,
-        total_amount,
-        start_time,
-        cliff_time,
-        end_time,
-        ctx.accounts.creator_token_account.amount,
-    )?;
+    if milestone_based {
+        // Milestone mode: the time schedule is irrelevant, only validate amount/recipient/funds.
+        validate_milestone_stream_params(
+            recipient,
+            total_amount,
+            ctx.accounts.creator_token_account.amount,
+        )?;
+    } else {
+        validate_create_stream_params(
+            recipient,
+            total_amount,
+            start_time,
+            cliff_time,
+            end_time,
+            ctx.accounts.creator_token_account.amount,
+        )?;
+    }
 
     let stream = &mut ctx.accounts.stream;
     stream.creator = ctx.accounts.creator.key();
@@ -86,6 +96,8 @@ pub fn create_stream_handler(
     stream.end_time = end_time;
     stream.cancelable = cancelable;
     stream.canceled = false;
+    stream.milestone_based = milestone_based;
+    stream.milestone_reached = false;
     stream.bump = ctx.bumps.stream;
     stream.escrow_bump = ctx.bumps.escrow_authority;
     stream.created_at = Clock::get()?.unix_timestamp;
@@ -122,6 +134,24 @@ pub fn validate_create_stream_params(
     require!(
         cliff_time >= start_time && cliff_time <= end_time,
         VestingError::InvalidCliff
+    );
+    require!(
+        creator_token_balance >= total_amount,
+        VestingError::InsufficientFunds
+    );
+
+    Ok(())
+}
+
+pub fn validate_milestone_stream_params(
+    recipient: Pubkey,
+    total_amount: u64,
+    creator_token_balance: u64,
+) -> Result<()> {
+    require!(total_amount > 0, VestingError::InvalidAmount);
+    require!(
+        recipient != Pubkey::default(),
+        VestingError::InvalidRecipient
     );
     require!(
         creator_token_balance >= total_amount,
@@ -189,6 +219,34 @@ mod tests {
     #[test]
     fn validate_create_stream_rejects_insufficient_funds() {
         let result = validate_create_stream_params(Pubkey::new_unique(), 1_001, 10, 20, 110, 1_000);
+
+        assert_anchor_error(result, "InsufficientFunds");
+    }
+
+    #[test]
+    fn validate_milestone_stream_accepts_valid_params() {
+        let result = validate_milestone_stream_params(Pubkey::new_unique(), 1_000, 1_000);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_milestone_stream_rejects_zero_amount() {
+        let result = validate_milestone_stream_params(Pubkey::new_unique(), 0, 1_000);
+
+        assert_anchor_error(result, "InvalidAmount");
+    }
+
+    #[test]
+    fn validate_milestone_stream_rejects_default_recipient() {
+        let result = validate_milestone_stream_params(Pubkey::default(), 1_000, 1_000);
+
+        assert_anchor_error(result, "InvalidRecipient");
+    }
+
+    #[test]
+    fn validate_milestone_stream_rejects_insufficient_funds() {
+        let result = validate_milestone_stream_params(Pubkey::new_unique(), 1_001, 1_000);
 
         assert_anchor_error(result, "InsufficientFunds");
     }

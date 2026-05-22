@@ -22,6 +22,7 @@ pub mod tdp_solana {
         cliff_time: i64,
         end_time: i64,
         cancelable: bool,
+        milestone_based: bool,
     ) -> Result<()> {
         instructions::create_stream::create_stream_handler(
             ctx,
@@ -32,6 +33,7 @@ pub mod tdp_solana {
             cliff_time,
             end_time,
             cancelable,
+            milestone_based,
         )
     }
 
@@ -45,5 +47,9 @@ pub mod tdp_solana {
 
     pub fn close_stream(ctx: Context<CloseStream>) -> Result<()> {
         instructions::close_stream::close_stream_handler(ctx)
+    }
+
+    pub fn set_milestone(ctx: Context<SetMilestone>) -> Result<()> {
+        instructions::set_milestone::set_milestone_handler(ctx)
     }
 }
