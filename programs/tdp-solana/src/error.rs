@@ -35,6 +35,9 @@ pub enum VestingError {
     #[msg("Stream is not configured for milestone unlocking")]
     NotMilestoneStream,
 
+    #[msg("Stream schedule has already ended")]
+    StreamExpired,
+
     #[msg("Token account mint does not match stream mint")]
     InvalidTokenAccount,
 
