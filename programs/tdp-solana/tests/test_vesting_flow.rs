@@ -402,3 +402,140 @@ fn milestone_stream_unlocks_only_after_trigger() {
     );
     assert!(stream_state(&ctx.svm, &ctx.stream).milestone_reached);
 }
+
+fn create_cancelable_stream(ctx: &mut TestContext, cliff_time: i64) {
+    let ix = Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::CreateStream {
+            stream_id: 1,
+            recipient: ctx.recipient.pubkey(),
+            total_amount: TOTAL_AMOUNT,
+            start_time: START_TIME,
+            cliff_time,
+            end_time: END_TIME,
+            cancelable: true,
+            milestone_based: false,
+        }
+        .data(),
+        tdp_solana::accounts::CreateStream {
+            creator: ctx.creator.pubkey(),
+            stream: ctx.stream,
+            mint: ctx.mint,
+            creator_token_account: ctx.creator_token_account,
+            escrow_authority: ctx.escrow_authority,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: spl_associated_token_account_interface::program::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[&ctx.escrow_token_account]);
+}
+
+fn cancel_ix(ctx: &TestContext, creator: anchor_lang::prelude::Pubkey) -> Instruction {
+    Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::CancelStream {}.data(),
+        tdp_solana::accounts::CancelStream {
+            creator,
+            recipient_authority: ctx.recipient.pubkey(),
+            stream: ctx.stream,
+            mint: ctx.mint,
+            escrow_authority: ctx.escrow_authority,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            creator_token_account: ctx.creator_token_account,
+            recipient_token_account: ctx.recipient_token_account,
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: spl_associated_token_account_interface::program::ID,
+            system_program: anchor_lang::system_program::ID,
+            clock: anchor_lang::solana_program::sysvar::clock::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+#[test]
+fn cancel_before_cliff_returns_all_to_creator() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, 300); // cliff in the middle
+    set_clock(&mut ctx.svm, 100); // before cliff
+
+    let ix = cancel_ix(&ctx, ctx.creator.pubkey());
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[]);
+
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.creator_token_account),
+        TOTAL_AMOUNT
+    );
+    assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
+        0
+    );
+    assert!(stream_state(&ctx.svm, &ctx.stream).canceled);
+}
+
+#[test]
+fn cancel_mid_stream_splits_vested_and_locked() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME); // cliff == start
+    set_clock(&mut ctx.svm, START_TIME + ((END_TIME - START_TIME) / 2)); // 50%
+
+    let ix = cancel_ix(&ctx, ctx.creator.pubkey());
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[]);
+
+    assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 500);
+    assert_eq!(token_amount(&ctx.svm, &ctx.creator_token_account), 500);
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
+        0
+    );
+}
+
+#[test]
+fn cancel_after_full_vest_fails() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME);
+    set_clock(&mut ctx.svm, END_TIME); // schedule ended -> StreamExpired
+
+    let ix = cancel_ix(&ctx, ctx.creator.pubkey());
+    send_ix_expect_err(&mut ctx.svm, &ctx.creator, ix, &[]);
+}
+
+#[test]
+fn cancel_twice_fails() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME);
+    set_clock(&mut ctx.svm, START_TIME + 100);
+
+    let ix1 = cancel_ix(&ctx, ctx.creator.pubkey());
+    send_ix(&mut ctx.svm, &ctx.creator, ix1, &[]);
+
+    let ix2 = cancel_ix(&ctx, ctx.creator.pubkey()); // already cancelled -> AlreadyCancelled
+    send_ix_expect_err(&mut ctx.svm, &ctx.creator, ix2, &[]);
+}
+
+#[test]
+fn cancel_by_non_creator_fails() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME);
+    set_clock(&mut ctx.svm, START_TIME + 100);
+
+    // A non-creator signer derives a different stream PDA -> account check fails.
+    let attacker = Keypair::new();
+    ctx.svm.airdrop(&attacker.pubkey(), 1_000_000_000).unwrap();
+    let ix = cancel_ix(&ctx, attacker.pubkey());
+    send_ix_expect_err(&mut ctx.svm, &attacker, ix, &[]);
+}
