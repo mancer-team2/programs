@@ -38,6 +38,9 @@ pub enum VestingError {
     #[msg("Stream schedule has already ended")]
     StreamExpired,
 
+    #[msg("Stream is not fully settled yet")]
+    StreamNotSettled,
+
     #[msg("Token account mint does not match stream mint")]
     InvalidTokenAccount,
 
