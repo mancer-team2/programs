@@ -539,3 +539,61 @@ fn cancel_by_non_creator_fails() {
     let ix = cancel_ix(&ctx, attacker.pubkey());
     send_ix_expect_err(&mut ctx.svm, &attacker, ix, &[]);
 }
+
+fn close_ix(ctx: &TestContext) -> Instruction {
+    Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::CloseStream {}.data(),
+        tdp_solana::accounts::CloseStream {
+            creator: ctx.creator.pubkey(),
+            stream: ctx.stream,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            escrow_authority: ctx.escrow_authority,
+            token_program: TOKEN_PROGRAM_ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+    )
+}
+
+#[test]
+fn close_after_cancel_reclaims_accounts() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME);
+    set_clock(&mut ctx.svm, START_TIME + ((END_TIME - START_TIME) / 2));
+
+    let cancel = cancel_ix(&ctx, ctx.creator.pubkey());
+    send_ix(&mut ctx.svm, &ctx.creator, cancel, &[]);
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
+        0
+    );
+
+    let close = close_ix(&ctx);
+    send_ix(&mut ctx.svm, &ctx.creator, close, &[]);
+
+    // Both the stream PDA and the escrow token account are closed (gone or zeroed).
+    assert!(ctx
+        .svm
+        .get_account(&ctx.stream)
+        .map_or(true, |a| a.lamports == 0 || a.data.is_empty()));
+    assert!(ctx
+        .svm
+        .get_account(&ctx.escrow_token_account.pubkey())
+        .map_or(true, |a| a.lamports == 0 || a.data.is_empty()));
+}
+
+#[test]
+fn close_active_stream_fails() {
+    let Some(mut ctx) = setup() else {
+        return;
+    };
+    create_cancelable_stream(&mut ctx, START_TIME);
+    set_clock(&mut ctx.svm, START_TIME + 100);
+
+    // Stream still active and escrow still funded -> close must fail.
+    let close = close_ix(&ctx);
+    send_ix_expect_err(&mut ctx.svm, &ctx.creator, close, &[]);
+}
