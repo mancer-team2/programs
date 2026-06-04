@@ -1,6 +1,6 @@
 use {
     anchor_lang::{
-        solana_program::instruction::Instruction, AccountDeserialize, InstructionData,
+        solana_program::instruction::Instruction, InstructionData,
         ToAccountMetas,
     },
     litesvm::LiteSVM,
@@ -260,12 +260,14 @@ fn withdraw_at_exactly_cliff_date_unlocks_catch_up_amount() {
 
     // One tick before cliff: nothing vested.
     set_clock(&mut ctx.svm, 299);
-    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, withdraw_ix(&ctx), &[]);
+    let ix = withdraw_ix(&ctx);
+    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);
 
     // At exactly cliff: catch-up unlocks 50%.
     set_clock(&mut ctx.svm, 300);
-    send_ix(&mut ctx.svm, &ctx.recipient, withdraw_ix(&ctx), &[]);
+    let ix = withdraw_ix(&ctx);
+    send_ix(&mut ctx.svm, &ctx.recipient, ix, &[]);
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 500);
     assert_eq!(
         token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
@@ -286,11 +288,13 @@ fn double_withdraw_same_time_fails_with_nothing_to_withdraw() {
 
     // First withdraw at 50%: elapsed=200, duration=400 → 500 tokens.
     set_clock(&mut ctx.svm, 300);
-    send_ix(&mut ctx.svm, &ctx.recipient, withdraw_ix(&ctx), &[]);
+    let ix = withdraw_ix(&ctx);
+    send_ix(&mut ctx.svm, &ctx.recipient, ix, &[]);
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 500);
 
     // Immediate second withdraw at the same timestamp: nothing new vested.
-    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, withdraw_ix(&ctx), &[]);
+    let ix = withdraw_ix(&ctx);
+    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
 
     // Balance must be unchanged — no double-spend.
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 500);
@@ -312,7 +316,8 @@ fn withdraw_with_nothing_available_before_cliff_fails() {
     create_stream_with_cliff(&mut ctx, 300);
 
     set_clock(&mut ctx.svm, 200);
-    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, withdraw_ix(&ctx), &[]);
+    let ix = withdraw_ix(&ctx);
+    send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
 
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);
     assert_eq!(
