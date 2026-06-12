@@ -9,8 +9,8 @@ pub use state::*;
 
 declare_id!("BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9");
 
-#[program]
 #[allow(clippy::diverging_sub_expression)]
+#[program]
 pub mod tdp_solana {
     use super::*;
 
