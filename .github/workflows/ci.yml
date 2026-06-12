@@ -34,6 +34,12 @@ jobs:
         with:
           shared-key: tdp-solana
 
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
       - name: Build
         run: cargo build --all-targets
 
