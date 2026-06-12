@@ -80,8 +80,20 @@ fn setup() -> Option<TestContext> {
     svm.airdrop(&recipient.pubkey(), 10_000_000_000).unwrap();
     set_clock(&mut svm, START_TIME);
     set_mint_account(&mut svm, mint, creator.pubkey(), 0);
-    set_token_account(&mut svm, creator_token_account, mint, creator.pubkey(), TOTAL_AMOUNT);
-    set_token_account(&mut svm, recipient_token_account, mint, recipient.pubkey(), 0);
+    set_token_account(
+        &mut svm,
+        creator_token_account,
+        mint,
+        creator.pubkey(),
+        TOTAL_AMOUNT,
+    );
+    set_token_account(
+        &mut svm,
+        recipient_token_account,
+        mint,
+        recipient.pubkey(),
+        0,
+    );
 
     Some(TestContext {
         svm,
