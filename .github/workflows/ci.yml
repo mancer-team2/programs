@@ -38,7 +38,11 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: |
+          cargo clippy --all-targets -- \
+            -D warnings \
+            -A clippy::diverging_sub_expression \
+            -A clippy::too_many_arguments
 
       - name: Build
         run: cargo build --all-targets

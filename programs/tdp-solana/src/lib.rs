@@ -9,12 +9,10 @@ pub use state::*;
 
 declare_id!("BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9");
 
-#[allow(clippy::diverging_sub_expression)]
 #[program]
 pub mod tdp_solana {
     use super::*;
 
-    #[allow(clippy::too_many_arguments)]
     pub fn create_stream(
         ctx: Context<CreateStream>,
         stream_id: u64,
