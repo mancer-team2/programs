@@ -577,11 +577,11 @@ fn close_after_cancel_reclaims_accounts() {
     assert!(ctx
         .svm
         .get_account(&ctx.stream)
-        .map_or(true, |a| a.lamports == 0 || a.data.is_empty()));
+        .is_none_or(|a| a.lamports == 0 || a.data.is_empty()));
     assert!(ctx
         .svm
         .get_account(&ctx.escrow_token_account.pubkey())
-        .map_or(true, |a| a.lamports == 0 || a.data.is_empty()));
+        .is_none_or(|a| a.lamports == 0 || a.data.is_empty()));
 }
 
 #[test]
