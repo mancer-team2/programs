@@ -211,7 +211,8 @@ fn create_stream_ix(ctx: &TestContext, total_amount: u64, cancelable: bool) -> I
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable,
-            milestone_based: false,
+            vesting_type: tdp_solana::VestingType::Linear,
+            milestone_time: 0,
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -278,7 +279,7 @@ fn zero_amount_stream_create_fails() {
 }
 
 #[test]
-fn cancel_at_exactly_end_time_fails_with_stream_expired() {
+fn cancel_at_exactly_end_time_fails_when_fully_vested() {
     let Some(mut ctx) = setup() else {
         return;
     };
@@ -287,7 +288,7 @@ fn cancel_at_exactly_end_time_fails_with_stream_expired() {
     set_clock(&mut ctx.svm, END_TIME);
 
     let ix = cancel_stream_ix(&ctx);
-    send_ix_expect_err(&mut ctx.svm, &ctx.creator, ix, &[], "StreamExpired");
+    send_ix_expect_err(&mut ctx.svm, &ctx.creator, ix, &[], "FullyVested");
 
     assert_eq!(token_amount(&ctx.svm, &ctx.creator_token_account), 0);
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);

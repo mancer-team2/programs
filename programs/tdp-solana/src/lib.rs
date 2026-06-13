@@ -22,7 +22,8 @@ pub mod tdp_solana {
         cliff_time: i64,
         end_time: i64,
         cancelable: bool,
-        milestone_based: bool,
+        vesting_type: VestingType,
+        milestone_time: i64,
     ) -> Result<()> {
         instructions::create_stream::create_stream_handler(
             ctx,
@@ -33,7 +34,8 @@ pub mod tdp_solana {
             cliff_time,
             end_time,
             cancelable,
-            milestone_based,
+            vesting_type,
+            milestone_time,
         )
     }
 

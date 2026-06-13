@@ -1,5 +1,12 @@
 use anchor_lang::prelude::*;
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum VestingType {
+    Cliff,
+    Linear,
+    Milestone,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct Stream {
@@ -27,10 +34,12 @@ pub struct Stream {
     pub cancelable: bool,
     /// Whether the stream has been canceled.
     pub canceled: bool,
-    /// Whether unlocking is gated by an explicit milestone instead of elapsed time.
-    pub milestone_based: bool,
-    /// Whether the creator has marked the milestone as reached (only meaningful if milestone_based).
+    /// Vesting rule used to calculate the unlocked amount.
+    pub vesting_type: VestingType,
+    /// Whether the creator has marked the milestone as reached (only meaningful for milestone vesting).
     pub milestone_reached: bool,
+    /// Unix timestamp before which a milestone cannot unlock tokens.
+    pub milestone_time: i64,
     /// Bump seed for the Stream account PDA.
     pub bump: u8,
     /// Bump seed for the escrow token account PDA.

@@ -14,6 +14,9 @@ pub enum VestingError {
     #[msg("cliff_time must be between start_time and end_time")]
     InvalidCliff,
 
+    #[msg("milestone_time must be greater than zero")]
+    InvalidMilestoneTime,
+
     #[msg("Cliff period has not been reached yet")]
     CliffNotReached,
 

@@ -1,4 +1,7 @@
-use crate::{error::VestingError, state::stream::Stream};
+use crate::{
+    error::VestingError,
+    state::stream::{Stream, VestingType},
+};
 use anchor_lang::prelude::*;
 
 #[derive(Accounts)]
@@ -25,7 +28,10 @@ pub fn set_milestone_handler(ctx: Context<SetMilestone>) -> Result<()> {
     let stream = &mut ctx.accounts.stream;
 
     require_keys_eq!(creator_key, stream.creator, VestingError::Unauthorized);
-    require!(stream.milestone_based, VestingError::NotMilestoneStream);
+    require!(
+        stream.vesting_type == VestingType::Milestone,
+        VestingError::NotMilestoneStream
+    );
     require!(!stream.canceled, VestingError::AlreadyCancelled);
     require!(!stream.milestone_reached, VestingError::FullyVested);
 
