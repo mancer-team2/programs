@@ -163,6 +163,7 @@ pub fn calculate_vested_amount(
     u64::try_from(vested).map_err(|_| VestingError::MathOverflow.into())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_vested_amount_by_type(
     total_amount: u64,
     start_time: i64,

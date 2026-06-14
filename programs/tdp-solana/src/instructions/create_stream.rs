@@ -57,6 +57,7 @@ pub struct CreateStream<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_stream_handler(
     ctx: Context<CreateStream>,
     stream_id: u64,
@@ -115,6 +116,7 @@ pub fn create_stream_handler(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn validate_create_stream_params(
     recipient: Pubkey,
     total_amount: u64,
