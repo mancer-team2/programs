@@ -185,6 +185,12 @@ fn stream_state(svm: &LiteSVM, address: &Pubkey) -> tdp_solana::Stream {
 }
 
 fn create_stream(ctx: &mut TestContext, cancelable: bool, milestone_based: bool) {
+    let vesting_type = if milestone_based {
+        tdp_solana::VestingType::Milestone
+    } else {
+        tdp_solana::VestingType::Linear
+    };
+
     let ix = Instruction::new_with_bytes(
         tdp_solana::id(),
         &tdp_solana::instruction::CreateStream {
@@ -195,7 +201,8 @@ fn create_stream(ctx: &mut TestContext, cancelable: bool, milestone_based: bool)
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable,
-            milestone_based,
+            vesting_type,
+            milestone_time: if milestone_based { START_TIME } else { 0 },
         }
         .data(),
         tdp_solana::accounts::CreateStream {

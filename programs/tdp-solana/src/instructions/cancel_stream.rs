@@ -1,4 +1,4 @@
-use crate::instructions::withdraw::calculate_vested_amount;
+use crate::instructions::withdraw::calculate_vested_amount_by_type;
 use crate::{error::VestingError, state::stream::Stream};
 use anchor_lang::prelude::*;
 use anchor_spl::{
@@ -95,26 +95,17 @@ pub fn cancel_stream_handler(ctx: Context<CancelStream>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
     let total_amount = ctx.accounts.stream.total_amount;
 
-    // Reject cancelling a stream that is already fully unlocked, per mode.
-    let vested_amount = if ctx.accounts.stream.milestone_based {
-        require!(
-            !ctx.accounts.stream.milestone_reached,
-            VestingError::FullyVested
-        );
-        0
-    } else {
-        require!(
-            now < ctx.accounts.stream.end_time,
-            VestingError::StreamExpired
-        );
-        calculate_vested_amount(
-            total_amount,
-            ctx.accounts.stream.start_time,
-            ctx.accounts.stream.cliff_time,
-            ctx.accounts.stream.end_time,
-            now,
-        )?
-    };
+    let vested_amount = calculate_vested_amount_by_type(
+        total_amount,
+        ctx.accounts.stream.start_time,
+        ctx.accounts.stream.cliff_time,
+        ctx.accounts.stream.end_time,
+        ctx.accounts.stream.vesting_type,
+        ctx.accounts.stream.milestone_time,
+        ctx.accounts.stream.milestone_reached,
+        now,
+    )?;
+    require!(vested_amount < total_amount, VestingError::FullyVested);
 
     let withdrawn_amount = ctx.accounts.stream.withdrawn_amount;
     let (to_recipient, to_creator) =

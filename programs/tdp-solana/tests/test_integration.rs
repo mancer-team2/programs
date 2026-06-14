@@ -207,7 +207,8 @@ fn create_stream(ctx: &mut TestContext) {
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable: false,
-            milestone_based: false,
+            vesting_type: tdp_solana::VestingType::Linear,
+            milestone_time: 0,
         }
         .data(),
         tdp_solana::accounts::CreateStream {

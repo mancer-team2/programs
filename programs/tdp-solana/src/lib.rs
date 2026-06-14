@@ -9,10 +9,12 @@ pub use state::*;
 
 declare_id!("BiwY71TrdBzgv2yfa6KfUxUMY8UCpeiUMGnwmCMTsfs9");
 
+#[allow(clippy::diverging_sub_expression)]
 #[program]
 pub mod tdp_solana {
     use super::*;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_stream(
         ctx: Context<CreateStream>,
         stream_id: u64,
@@ -22,7 +24,8 @@ pub mod tdp_solana {
         cliff_time: i64,
         end_time: i64,
         cancelable: bool,
-        milestone_based: bool,
+        vesting_type: VestingType,
+        milestone_time: i64,
     ) -> Result<()> {
         instructions::create_stream::create_stream_handler(
             ctx,
@@ -33,7 +36,8 @@ pub mod tdp_solana {
             cliff_time,
             end_time,
             cancelable,
-            milestone_based,
+            vesting_type,
+            milestone_time,
         )
     }
 

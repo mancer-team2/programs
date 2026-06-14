@@ -210,7 +210,8 @@ fn create_stream(ctx: &mut TestContext) {
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable: false,
-            milestone_based: false,
+            vesting_type: tdp_solana::VestingType::Linear,
+            milestone_time: 0,
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -311,7 +312,8 @@ fn create_milestone_stream(ctx: &mut TestContext) {
             cliff_time: START_TIME,
             end_time: END_TIME,
             cancelable: true,
-            milestone_based: true,
+            vesting_type: tdp_solana::VestingType::Milestone,
+            milestone_time: END_TIME,
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -382,7 +384,7 @@ fn milestone_stream_unlocks_only_after_trigger() {
     };
     create_milestone_stream(&mut ctx);
 
-    // Even past end_time, a milestone stream stays locked until the creator triggers it.
+    // Even past its gate time, a milestone stream stays locked until the creator triggers it.
     set_clock(&mut ctx.svm, END_TIME + 1_000);
     let ix = withdraw_ix(&ctx);
     send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
@@ -403,18 +405,29 @@ fn milestone_stream_unlocks_only_after_trigger() {
     assert!(stream_state(&ctx.svm, &ctx.stream).milestone_reached);
 }
 
-fn create_cancelable_stream(ctx: &mut TestContext, cliff_time: i64) {
+fn create_cancelable_stream(ctx: &mut TestContext, vesting_type: tdp_solana::VestingType) {
+    let (start_time, cliff_time, end_time) = match vesting_type {
+        tdp_solana::VestingType::Cliff => (END_TIME - 1, END_TIME, END_TIME),
+        tdp_solana::VestingType::Linear => (START_TIME, START_TIME, END_TIME),
+        tdp_solana::VestingType::Milestone => (0, 0, 0),
+    };
+
     let ix = Instruction::new_with_bytes(
         tdp_solana::id(),
         &tdp_solana::instruction::CreateStream {
             stream_id: 1,
             recipient: ctx.recipient.pubkey(),
             total_amount: TOTAL_AMOUNT,
-            start_time: START_TIME,
+            start_time,
             cliff_time,
-            end_time: END_TIME,
+            end_time,
             cancelable: true,
-            milestone_based: false,
+            vesting_type,
+            milestone_time: if vesting_type == tdp_solana::VestingType::Milestone {
+                END_TIME
+            } else {
+                0
+            },
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -460,8 +473,8 @@ fn cancel_before_cliff_returns_all_to_creator() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, 300); // cliff in the middle
-    set_clock(&mut ctx.svm, 100); // before cliff
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Cliff);
+    set_clock(&mut ctx.svm, START_TIME); // before cliff unlock
 
     let ix = cancel_ix(&ctx, ctx.creator.pubkey());
     send_ix(&mut ctx.svm, &ctx.creator, ix, &[]);
@@ -483,7 +496,7 @@ fn cancel_mid_stream_splits_vested_and_locked() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME); // cliff == start
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
     set_clock(&mut ctx.svm, START_TIME + ((END_TIME - START_TIME) / 2)); // 50%
 
     let ix = cancel_ix(&ctx, ctx.creator.pubkey());
@@ -502,8 +515,8 @@ fn cancel_after_full_vest_fails() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME);
-    set_clock(&mut ctx.svm, END_TIME); // schedule ended -> StreamExpired
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
+    set_clock(&mut ctx.svm, END_TIME);
 
     let ix = cancel_ix(&ctx, ctx.creator.pubkey());
     send_ix_expect_err(&mut ctx.svm, &ctx.creator, ix, &[]);
@@ -514,7 +527,7 @@ fn cancel_twice_fails() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME);
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
     set_clock(&mut ctx.svm, START_TIME + 100);
 
     let ix1 = cancel_ix(&ctx, ctx.creator.pubkey());
@@ -529,7 +542,7 @@ fn cancel_by_non_creator_fails() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME);
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
     set_clock(&mut ctx.svm, START_TIME + 100);
 
     // A non-creator signer derives a different stream PDA -> account check fails.
@@ -560,7 +573,7 @@ fn close_after_cancel_reclaims_accounts() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME);
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
     set_clock(&mut ctx.svm, START_TIME + ((END_TIME - START_TIME) / 2));
 
     let cancel = cancel_ix(&ctx, ctx.creator.pubkey());
@@ -589,7 +602,7 @@ fn close_active_stream_fails() {
     let Some(mut ctx) = setup() else {
         return;
     };
-    create_cancelable_stream(&mut ctx, START_TIME);
+    create_cancelable_stream(&mut ctx, tdp_solana::VestingType::Linear);
     set_clock(&mut ctx.svm, START_TIME + 100);
 
     // Stream still active and escrow still funded -> close must fail.

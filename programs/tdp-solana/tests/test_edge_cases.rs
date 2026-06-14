@@ -218,18 +218,19 @@ fn withdraw_ix(ctx: &TestContext) -> Instruction {
     )
 }
 
-fn create_stream_with_cliff(ctx: &mut TestContext, cliff_time: i64) {
+fn create_cliff_stream(ctx: &mut TestContext, unlock_time: i64) {
     let ix = Instruction::new_with_bytes(
         tdp_solana::id(),
         &tdp_solana::instruction::CreateStream {
             stream_id: 1,
             recipient: ctx.recipient.pubkey(),
             total_amount: TOTAL_AMOUNT,
-            start_time: START_TIME,
-            cliff_time,
-            end_time: END_TIME,
+            start_time: unlock_time - 1,
+            cliff_time: unlock_time,
+            end_time: unlock_time,
             cancelable: false,
-            milestone_based: false,
+            vesting_type: tdp_solana::VestingType::Cliff,
+            milestone_time: 0,
         }
         .data(),
         tdp_solana::accounts::CreateStream {
@@ -250,7 +251,34 @@ fn create_stream_with_cliff(ctx: &mut TestContext, cliff_time: i64) {
 
 // cliff == start → no cliff gate, purely linear from the start.
 fn create_stream_no_cliff(ctx: &mut TestContext) {
-    create_stream_with_cliff(ctx, START_TIME);
+    let ix = Instruction::new_with_bytes(
+        tdp_solana::id(),
+        &tdp_solana::instruction::CreateStream {
+            stream_id: 1,
+            recipient: ctx.recipient.pubkey(),
+            total_amount: TOTAL_AMOUNT,
+            start_time: START_TIME,
+            cliff_time: START_TIME,
+            end_time: END_TIME,
+            cancelable: false,
+            vesting_type: tdp_solana::VestingType::Linear,
+            milestone_time: 0,
+        }
+        .data(),
+        tdp_solana::accounts::CreateStream {
+            creator: ctx.creator.pubkey(),
+            stream: ctx.stream,
+            mint: ctx.mint,
+            creator_token_account: ctx.creator_token_account,
+            escrow_authority: ctx.escrow_authority,
+            escrow_token_account: ctx.escrow_token_account.pubkey(),
+            token_program: TOKEN_PROGRAM_ID,
+            associated_token_program: spl_associated_token_account_interface::program::ID,
+            system_program: anchor_lang::system_program::ID,
+        }
+        .to_account_metas(None),
+    );
+    send_ix(&mut ctx.svm, &ctx.creator, ix, &[&ctx.escrow_token_account]);
 }
 
 // ─── Edge cases ───────────────────────────────────────────────────────────────
@@ -260,27 +288,30 @@ fn create_stream_no_cliff(ctx: &mut TestContext) {
 // At t=299: nothing vested (before cliff gate).
 // At t=300: cliff catch-up unlocks 50% — elapsed=200, duration=400 → 500 tokens.
 #[test]
-fn withdraw_at_exactly_cliff_date_unlocks_catch_up_amount() {
+fn withdraw_at_exactly_cliff_date_unlocks_full_amount() {
     let Some(mut ctx) = setup() else {
         return;
     };
 
-    create_stream_with_cliff(&mut ctx, 300);
+    create_cliff_stream(&mut ctx, END_TIME);
 
     // One tick before cliff: nothing vested.
-    set_clock(&mut ctx.svm, 299);
+    set_clock(&mut ctx.svm, END_TIME - 1);
     let ix = withdraw_ix(&ctx);
     send_ix_expect_err(&mut ctx.svm, &ctx.recipient, ix, &[]);
     assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 0);
 
     // At exactly cliff: catch-up unlocks 50%.
-    set_clock(&mut ctx.svm, 300);
+    set_clock(&mut ctx.svm, END_TIME);
     let ix = withdraw_ix(&ctx);
     send_ix(&mut ctx.svm, &ctx.recipient, ix, &[]);
-    assert_eq!(token_amount(&ctx.svm, &ctx.recipient_token_account), 500);
+    assert_eq!(
+        token_amount(&ctx.svm, &ctx.recipient_token_account),
+        TOTAL_AMOUNT
+    );
     assert_eq!(
         token_amount(&ctx.svm, &ctx.escrow_token_account.pubkey()),
-        500
+        0
     );
 }
 
@@ -322,7 +353,7 @@ fn withdraw_with_nothing_available_before_cliff_fails() {
     };
 
     // Cliff at 300; test at t=200 — before cliff.
-    create_stream_with_cliff(&mut ctx, 300);
+    create_cliff_stream(&mut ctx, END_TIME);
 
     set_clock(&mut ctx.svm, 200);
     let ix = withdraw_ix(&ctx);

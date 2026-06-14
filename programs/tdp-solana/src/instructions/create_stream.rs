@@ -1,4 +1,7 @@
-use crate::{error::VestingError, state::stream::Stream};
+use crate::{
+    error::VestingError,
+    state::stream::{Stream, VestingType},
+};
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -54,6 +57,7 @@ pub struct CreateStream<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_stream_handler(
     ctx: Context<CreateStream>,
     stream_id: u64,
@@ -63,25 +67,19 @@ pub fn create_stream_handler(
     cliff_time: i64,
     end_time: i64,
     cancelable: bool,
-    milestone_based: bool,
+    vesting_type: VestingType,
+    milestone_time: i64,
 ) -> Result<()> {
-    if milestone_based {
-        // Milestone mode: the time schedule is irrelevant, only validate amount/recipient/funds.
-        validate_milestone_stream_params(
-            recipient,
-            total_amount,
-            ctx.accounts.creator_token_account.amount,
-        )?;
-    } else {
-        validate_create_stream_params(
-            recipient,
-            total_amount,
-            start_time,
-            cliff_time,
-            end_time,
-            ctx.accounts.creator_token_account.amount,
-        )?;
-    }
+    validate_create_stream_params(
+        recipient,
+        total_amount,
+        start_time,
+        cliff_time,
+        end_time,
+        vesting_type,
+        milestone_time,
+        ctx.accounts.creator_token_account.amount,
+    )?;
 
     let stream = &mut ctx.accounts.stream;
     stream.creator = ctx.accounts.creator.key();
@@ -96,8 +94,9 @@ pub fn create_stream_handler(
     stream.end_time = end_time;
     stream.cancelable = cancelable;
     stream.canceled = false;
-    stream.milestone_based = milestone_based;
+    stream.vesting_type = vesting_type;
     stream.milestone_reached = false;
+    stream.milestone_time = milestone_time;
     stream.bump = ctx.bumps.stream;
     stream.escrow_bump = ctx.bumps.escrow_authority;
     stream.created_at = Clock::get()?.unix_timestamp;
@@ -117,12 +116,15 @@ pub fn create_stream_handler(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn validate_create_stream_params(
     recipient: Pubkey,
     total_amount: u64,
     start_time: i64,
     cliff_time: i64,
     end_time: i64,
+    vesting_type: VestingType,
+    milestone_time: i64,
     creator_token_balance: u64,
 ) -> Result<()> {
     require!(total_amount > 0, VestingError::InvalidAmount);
@@ -130,29 +132,19 @@ pub fn validate_create_stream_params(
         recipient != Pubkey::default(),
         VestingError::InvalidRecipient
     );
-    require!(start_time < end_time, VestingError::InvalidSchedule);
-    require!(
-        cliff_time >= start_time && cliff_time <= end_time,
-        VestingError::InvalidCliff
-    );
-    require!(
-        creator_token_balance >= total_amount,
-        VestingError::InsufficientFunds
-    );
-
-    Ok(())
-}
-
-pub fn validate_milestone_stream_params(
-    recipient: Pubkey,
-    total_amount: u64,
-    creator_token_balance: u64,
-) -> Result<()> {
-    require!(total_amount > 0, VestingError::InvalidAmount);
-    require!(
-        recipient != Pubkey::default(),
-        VestingError::InvalidRecipient
-    );
+    match vesting_type {
+        VestingType::Cliff => {
+            require!(start_time < end_time, VestingError::InvalidSchedule);
+            require!(cliff_time == end_time, VestingError::InvalidCliff);
+        }
+        VestingType::Linear => {
+            require!(start_time < end_time, VestingError::InvalidSchedule);
+            require!(cliff_time == start_time, VestingError::InvalidCliff);
+        }
+        VestingType::Milestone => {
+            require!(milestone_time > 0, VestingError::InvalidMilestoneTime);
+        }
+    }
     require!(
         creator_token_balance >= total_amount,
         VestingError::InsufficientFunds
@@ -160,7 +152,6 @@ pub fn validate_milestone_stream_params(
 
     Ok(())
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,77 +168,157 @@ mod tests {
     }
 
     #[test]
-    fn validate_create_stream_accepts_valid_params() {
-        let result = validate_create_stream_params(Pubkey::new_unique(), 1_000, 10, 20, 110, 1_000);
+    fn validate_create_stream_accepts_cliff_params() {
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            109,
+            110,
+            110,
+            VestingType::Cliff,
+            0,
+            1_000,
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_create_stream_accepts_linear_params() {
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            10,
+            10,
+            110,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_create_stream_accepts_milestone_params() {
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            0,
+            0,
+            0,
+            VestingType::Milestone,
+            110,
+            1_000,
+        );
 
         assert!(result.is_ok());
     }
 
     #[test]
     fn validate_create_stream_rejects_zero_amount() {
-        let result = validate_create_stream_params(Pubkey::new_unique(), 0, 10, 20, 110, 1_000);
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            0,
+            10,
+            10,
+            110,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
 
         assert_anchor_error(result, "InvalidAmount");
     }
 
     #[test]
     fn validate_create_stream_rejects_default_recipient() {
-        let result = validate_create_stream_params(Pubkey::default(), 1_000, 10, 20, 110, 1_000);
+        let result = validate_create_stream_params(
+            Pubkey::default(),
+            1_000,
+            10,
+            10,
+            110,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
 
         assert_anchor_error(result, "InvalidRecipient");
     }
 
     #[test]
     fn validate_create_stream_rejects_invalid_schedule() {
-        let result =
-            validate_create_stream_params(Pubkey::new_unique(), 1_000, 110, 110, 10, 1_000);
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            110,
+            110,
+            10,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
 
         assert_anchor_error(result, "InvalidSchedule");
     }
 
     #[test]
-    fn validate_create_stream_rejects_cliff_outside_schedule() {
-        let before_start =
-            validate_create_stream_params(Pubkey::new_unique(), 1_000, 10, 9, 110, 1_000);
-        let after_end =
-            validate_create_stream_params(Pubkey::new_unique(), 1_000, 10, 111, 110, 1_000);
+    fn validate_create_stream_rejects_wrong_cliff_shape() {
+        let cliff_not_at_end = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            10,
+            50,
+            110,
+            VestingType::Cliff,
+            0,
+            1_000,
+        );
+        let linear_with_late_cliff = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            10,
+            50,
+            110,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
 
-        assert_anchor_error(before_start, "InvalidCliff");
-        assert_anchor_error(after_end, "InvalidCliff");
+        assert_anchor_error(cliff_not_at_end, "InvalidCliff");
+        assert_anchor_error(linear_with_late_cliff, "InvalidCliff");
     }
 
     #[test]
     fn validate_create_stream_rejects_insufficient_funds() {
-        let result = validate_create_stream_params(Pubkey::new_unique(), 1_001, 10, 20, 110, 1_000);
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_001,
+            10,
+            10,
+            110,
+            VestingType::Linear,
+            0,
+            1_000,
+        );
 
         assert_anchor_error(result, "InsufficientFunds");
     }
 
     #[test]
-    fn validate_milestone_stream_accepts_valid_params() {
-        let result = validate_milestone_stream_params(Pubkey::new_unique(), 1_000, 1_000);
+    fn validate_create_stream_rejects_missing_milestone_time() {
+        let result = validate_create_stream_params(
+            Pubkey::new_unique(),
+            1_000,
+            0,
+            0,
+            0,
+            VestingType::Milestone,
+            0,
+            1_000,
+        );
 
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn validate_milestone_stream_rejects_zero_amount() {
-        let result = validate_milestone_stream_params(Pubkey::new_unique(), 0, 1_000);
-
-        assert_anchor_error(result, "InvalidAmount");
-    }
-
-    #[test]
-    fn validate_milestone_stream_rejects_default_recipient() {
-        let result = validate_milestone_stream_params(Pubkey::default(), 1_000, 1_000);
-
-        assert_anchor_error(result, "InvalidRecipient");
-    }
-
-    #[test]
-    fn validate_milestone_stream_rejects_insufficient_funds() {
-        let result = validate_milestone_stream_params(Pubkey::new_unique(), 1_001, 1_000);
-
-        assert_anchor_error(result, "InsufficientFunds");
+        assert_anchor_error(result, "InvalidMilestoneTime");
     }
 }

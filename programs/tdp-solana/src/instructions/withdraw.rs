@@ -1,4 +1,7 @@
-use crate::{error::VestingError, state::stream::Stream};
+use crate::{
+    error::VestingError,
+    state::stream::{Stream, VestingType},
+};
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -73,20 +76,16 @@ pub fn withdraw_handler(ctx: Context<Withdraw>) -> Result<()> {
     );
 
     let now = Clock::get()?.unix_timestamp;
-    let vested_amount = if ctx.accounts.stream.milestone_based {
-        calculate_milestone_vested_amount(
-            ctx.accounts.stream.milestone_reached,
-            ctx.accounts.stream.total_amount,
-        )
-    } else {
-        calculate_vested_amount(
-            ctx.accounts.stream.total_amount,
-            ctx.accounts.stream.start_time,
-            ctx.accounts.stream.cliff_time,
-            ctx.accounts.stream.end_time,
-            now,
-        )?
-    };
+    let vested_amount = calculate_vested_amount_by_type(
+        ctx.accounts.stream.total_amount,
+        ctx.accounts.stream.start_time,
+        ctx.accounts.stream.cliff_time,
+        ctx.accounts.stream.end_time,
+        ctx.accounts.stream.vesting_type,
+        ctx.accounts.stream.milestone_time,
+        ctx.accounts.stream.milestone_reached,
+        now,
+    )?;
     let withdrawable_amount =
         calculate_withdrawable_amount(vested_amount, ctx.accounts.stream.withdrawn_amount)?;
 
@@ -164,19 +163,48 @@ pub fn calculate_vested_amount(
     u64::try_from(vested).map_err(|_| VestingError::MathOverflow.into())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn calculate_vested_amount_by_type(
+    total_amount: u64,
+    start_time: i64,
+    cliff_time: i64,
+    end_time: i64,
+    vesting_type: VestingType,
+    milestone_time: i64,
+    milestone_reached: bool,
+    current_time: i64,
+) -> Result<u64> {
+    match vesting_type {
+        VestingType::Cliff => {
+            require!(start_time < end_time, VestingError::InvalidSchedule);
+            require!(cliff_time == end_time, VestingError::InvalidCliff);
+
+            if current_time >= end_time {
+                Ok(total_amount)
+            } else {
+                Ok(0)
+            }
+        }
+        VestingType::Linear => {
+            require!(cliff_time == start_time, VestingError::InvalidCliff);
+            calculate_vested_amount(total_amount, start_time, cliff_time, end_time, current_time)
+        }
+        VestingType::Milestone => {
+            require!(milestone_time > 0, VestingError::InvalidMilestoneTime);
+
+            if milestone_reached && current_time >= milestone_time {
+                Ok(total_amount)
+            } else {
+                Ok(0)
+            }
+        }
+    }
+}
+
 pub fn calculate_withdrawable_amount(vested_amount: u64, withdrawn_amount: u64) -> Result<u64> {
     vested_amount
         .checked_sub(withdrawn_amount)
         .ok_or_else(|| VestingError::MathOverflow.into())
-}
-
-/// Milestone unlocking: all-or-nothing based on the creator-set flag.
-pub fn calculate_milestone_vested_amount(milestone_reached: bool, total_amount: u64) -> u64 {
-    if milestone_reached {
-        total_amount
-    } else {
-        0
-    }
 }
 
 #[cfg(test)]
@@ -253,12 +281,40 @@ mod tests {
     }
 
     #[test]
-    fn milestone_locked_until_reached() {
-        assert_eq!(calculate_milestone_vested_amount(false, 1_000), 0);
+    fn cliff_locked_until_end_time() {
+        let before =
+            calculate_vested_amount_by_type(1_000, 99, 100, 100, VestingType::Cliff, 0, false, 99)
+                .unwrap();
+        let at_unlock =
+            calculate_vested_amount_by_type(1_000, 99, 100, 100, VestingType::Cliff, 0, false, 100)
+                .unwrap();
+
+        assert_eq!(before, 0);
+        assert_eq!(at_unlock, 1_000);
     }
 
     #[test]
-    fn milestone_unlocks_full_amount_when_reached() {
-        assert_eq!(calculate_milestone_vested_amount(true, 1_000), 1_000);
+    fn milestone_requires_gate_time_and_reached_flag() {
+        let before_gate =
+            calculate_vested_amount_by_type(1_000, 0, 0, 0, VestingType::Milestone, 100, true, 99)
+                .unwrap();
+        let unreached = calculate_vested_amount_by_type(
+            1_000,
+            0,
+            0,
+            0,
+            VestingType::Milestone,
+            100,
+            false,
+            100,
+        )
+        .unwrap();
+        let reached =
+            calculate_vested_amount_by_type(1_000, 0, 0, 0, VestingType::Milestone, 100, true, 100)
+                .unwrap();
+
+        assert_eq!(before_gate, 0);
+        assert_eq!(unreached, 0);
+        assert_eq!(reached, 1_000);
     }
 }
